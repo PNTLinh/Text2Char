@@ -36,7 +36,7 @@ text2chart/
 ### Create virtual environment
 ```bash
 python -m venv myenv
-myenv\Scripts\activate  # Windows
+myenv\Scripts\activate  /  conda activate genbi
 ```
 
 ### Install dependencies
@@ -46,10 +46,10 @@ pip install -r requirements.txt
 
 ### Setup .env
 ```bash
-cp .env.example .env
+cp .env .env
 ```
 
-## Usage
+## Usagepyt
 
 ### Start Backend
 ```bash

@@ -1,0 +1,38 @@
+# ========================
+# Backend / API Server
+# ========================
+fastapi==0.115.5           # tương thích Pydantic v2, ổn định nhất hiện nay
+uvicorn[standard]==0.32.0  # version mới, tối ưu websockets + reload
+python-multipart==0.0.12   # upload file / form data
+
+# ========================
+# LLM & AI Connectors
+# ========================
+openai==1.54.3             # API chuẩn mới với client.Async
+google-generativeai==0.7.2 # hỗ trợ Gemini 1.5 mới nhất
+
+# ========================
+# Database / DataFrame
+# ========================
+duckdb==0.10.3             # có binary cho Python 3.12/3.13, không cần build jemalloc
+pandas==2.2.3              # tương thích tốt với DuckDB và Plotly
+sqlparse==0.5.1
+
+# ========================
+# Visualization
+# ========================
+plotly==5.24.1             # ổn định, hỗ trợ fig.to_json()
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# ========================
+# Frontend
+# ========================
+streamlit==1.40.0          # hỗ trợ Python 3.12+, responsive UI
+
+# ========================
+# Utils & Config
+# ========================
+python-dotenv==1.0.1
+pydantic==2.9.2            # tương thích FastAPI >=0.115
+pydantic-settings==2.6.0   # dùng BaseSettings mới, không conflict
