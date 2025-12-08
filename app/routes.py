@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 import os
+import pandas as pd  # Cần import pandas để xử lý NaN
 from pathlib import Path
 from app.models.schemas import QueryRequest, QueryResponse, ChartConfig
 from app.services.llm_service import LLMService
@@ -13,13 +14,16 @@ router = APIRouter()
 query_runner = QueryRunner()
 chart_builder = ChartBuilder()
 
+# Định nghĩa đường dẫn lưu file
+UPLOAD_DIR = Path("data")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
 @router.post("/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
     """Upload CSV file"""
     try:
         # Lưu file vào thư mục data
-        file_path = Path("data") / file.filename
-        file_path.parent.mkdir(exist_ok=True)
+        file_path = UPLOAD_DIR / file.filename
         
         with open(file_path, "wb") as f:
             content = await file.read()
@@ -43,7 +47,7 @@ async def upload_csv(file: UploadFile = File(...)):
 async def process_query(request: QueryRequest):
     """Xử lý câu hỏi và tạo biểu đồ"""
     try:
-        # Load CSV nếu có
+        # Load CSV nếu có đường dẫn mới, nếu không dùng cái cũ trong memory
         if request.csv_path:
             query_runner.load_csv(request.csv_path)
         
@@ -57,15 +61,20 @@ async def process_query(request: QueryRequest):
         # Execute SQL
         result_df = query_runner.execute_sql(llm_result['sql'])
         
+        # --- FIX LỖI NAN QUAN TRỌNG (STEP 1) ---
+        # Convert NaN thành None để JSON không bị lỗi
+        result_df = result_df.where(pd.notnull(result_df), None)
+        # ---------------------------------------
+
         # Tạo chart config
         chart_config = ChartConfig(
             chart_type=llm_result.get('chart_type', 'bar'),
-            x_column=llm_result['x_column'],
-            y_column=llm_result['y_column'],
-            title=llm_result['title']
+            x_column=llm_result.get('x_column'),
+            y_column=llm_result.get('y_column'),
+            title=llm_result.get('title', 'Biểu đồ dữ liệu')
         )
         
-        # Generate chart
+        # Generate chart HTML (nếu cần)
         chart_html = chart_builder.create_chart(result_df, chart_config)
         
         return QueryResponse(
@@ -77,6 +86,8 @@ async def process_query(request: QueryRequest):
         )
     
     except Exception as e:
+        # In lỗi ra terminal để dễ debug
+        print(f"Error processing query: {e}")
         return QueryResponse(
             success=False,
             sql="",
@@ -87,7 +98,32 @@ async def process_query(request: QueryRequest):
 async def get_data_info():
     """Lấy thông tin về dữ liệu hiện tại"""
     try:
-        info = query_runner.get_data_info()
+        # --- FIX LỖI NAN QUAN TRỌNG (STEP 2) ---
+        # Logic: Tìm file mới nhất trong folder data để đọc
+        files = sorted(UPLOAD_DIR.glob("*.csv"), key=os.path.getmtime)
+        
+        if not files:
+            return {"success": False, "message": "Chưa có file nào được upload"}
+            
+        latest_file = files[-1]
+        
+        # Đọc file để lấy thông tin
+        df = pd.read_csv(latest_file)
+        
+        # Xử lý NaN thành None cho phần preview
+        df = df.where(pd.notnull(df), None)
+        
+        info = {
+            "filename": latest_file.name,
+            "row_count": len(df),
+            "columns": list(df.columns),
+            "dtypes": {k: str(v) for k, v in df.dtypes.items()},
+            "sample": df.head(5).to_dict(orient='records')
+        }
+        
         return {"success": True, "data": info}
+        # ---------------------------------------
+
     except Exception as e:
+        print(f"Error getting data info: {e}")
         raise HTTPException(status_code=400, detail=str(e))

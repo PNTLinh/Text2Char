@@ -36,3 +36,7 @@ streamlit==1.40.0          # hỗ trợ Python 3.12+, responsive UI
 python-dotenv==1.0.1
 pydantic==2.9.2            # tương thích FastAPI >=0.115
 pydantic-settings==2.6.0   # dùng BaseSettings mới, không conflict
+
+httpx==0.24.1                # client HTTP async, thay thế requests
+chromadb
+sentence-transformers

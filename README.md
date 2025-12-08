@@ -13,22 +13,40 @@ Phát triển một công cụ AI có khả năng hiểu nội dung văn bản m
 ## Project Structure
 
 ```
-text2chart/
-├─ app/
-│  ├─ main.py              # FastAPI entrypoint
-│  ├─ routes.py            # API routes
-│  ├─ services/
-│  │   ├─ llm_service.py   # Gọi GPT hoặc Gemini
-│  │   ├─ query_runner.py  # DuckDB/Pandas xử lý SQL
-│  │   └─ chart_builder.py # Tạo biểu đồ từ dataframe
-│  ├─ models/
-│  │   └─ schemas.py       # Pydantic models
-│  └─ utils/               # helper functions
-├─ frontend/
-│  └─ app.py               # Streamlit UI
-├─ data/                   # CSV / SQLite sample
-├─ requirements.txt
-└─ README.md
+Text2Char/
+├── .env                       # Biến môi trường (API Keys, Configs)
+├── .gitignore
+├── requirements.txt           # Thêm: chromadb, sentence-transformers
+├── README.md
+│
+├── data/                      # Nơi lưu trữ dữ liệu
+│   ├── uploads/               # File CSV người dùng upload
+│   └── vector_db/             # Folder lưu dữ liệu của ChromaDB (Persist)
+│
+├── app/                       # BACKEND (FastAPI)
+│   ├── __init__.py
+│   ├── main.py                # Entry point của FastAPI
+│   │
+│   ├── endpoints.py       # API upload, query, health check
+│   │
+│   ├── config.py          # Load .env, cấu hình App
+│   │   
+│   ├── schemas.py         # Request/Response models (QueryRequest, SQLResponse...)
+│   │   
+│   ├── services/              # BUSINESS LOGIC (Quan trọng nhất)
+│   │   ├── __init__.py
+│   │   ├── data_service.py    # Xử lý Pandas, DuckDB (Đọc/Ghi file, chạy SQL)
+│   │   ├── vector_service.py  # [MỚI] Quản lý ChromaDB (Indexing & Retrieval)
+│   │   ├── llm_service.py     # Gọi OpenAI/Gemini (Generation)
+│   │
+│   └── helpers.py         # Hàm clean json, format text...
+│
+└── ui/                        # FRONTEND (Streamlit)
+    ├── app.py                 # File chạy chính: streamlit run ui/app.py
+    └── components/            # Tách nhỏ giao diện
+        ├── sidebar.py         # Code phần cài đặt bên trái
+        ├── chat.py            # Code hiển thị chat
+        ├── visualization.py   # Code vẽ biểu đồ
 ```
 
 ## Installation

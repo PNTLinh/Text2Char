@@ -1,6 +1,8 @@
 import os
-from typing import Dict, Any
 import json
+import re
+import httpx
+from typing import Dict, Any
 from openai import OpenAI
 import google.generativeai as genai
 from app.models.schemas import LLMProvider, SQLResponse
@@ -9,97 +11,88 @@ class LLMService:
     def __init__(self, provider: LLMProvider = LLMProvider.OPENAI):
         self.provider = provider
         
+        # --- CẤU HÌNH OPENAI ---
         if provider == LLMProvider.OPENAI:
-            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            api_key = os.getenv("OPENAI_API_KEY")
+            
+            # Lấy proxy từ biến môi trường
+            proxy_url = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+            
+            # FIX LỖI PROXY: Sử dụng httpx.Client
+            if proxy_url:
+                # Lưu ý: tham số là 'proxies' (số nhiều), truyền string vào nó sẽ áp dụng cho cả http và https
+                http_client = httpx.Client(proxies=proxy_url)
+                self.client = OpenAI(api_key=api_key, http_client=http_client)
+            else:
+                self.client = OpenAI(api_key=api_key)
+                
+            self.model_name = "gpt-4o"
+
+        # --- CẤU HÌNH GEMINI ---
         elif provider == LLMProvider.GEMINI:
             genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-            self.model = genai.GenerativeModel('gemini-pro')
-    
+            self.model = genai.GenerativeModel(
+                'gemini-1.5-flash',
+                generation_config={"response_mime_type": "application/json"}
+            )
+
+    def _clean_and_parse_json(self, raw_text: str) -> Dict[str, Any]:
+        """Hàm tiện ích để làm sạch chuỗi JSON trả về từ LLM"""
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if match:
+                clean_json = match.group(0)
+                try:
+                    return json.loads(clean_json)
+                except json.JSONDecodeError:
+                    pass
+            print(f"ERROR PARSING JSON: {raw_text}")
+            return {}
+
     def generate_sql(self, question: str, table_schema: Dict[str, str]) -> SQLResponse:
-        """
-        Generate SQL từ natural language question
-        
-        Args:
-            question: Câu hỏi từ người dùng
-            table_schema: Dictionary với format {column_name: data_type}
-        """
+        """Generate SQL compatible with DuckDB"""
         schema_str = "\n".join([f"- {col}: {dtype}" for col, dtype in table_schema.items()])
         
-        prompt = f"""Bạn là một SQL expert. Dựa vào câu hỏi và schema của bảng dữ liệu, 
-hãy tạo câu SQL phù hợp.
+        prompt = f"""Bạn là chuyên gia về DuckDB SQL.
+Nhiệm vụ: Chuyển đổi câu hỏi tự nhiên thành SQL và cấu hình biểu đồ.
 
-SCHEMA của bảng 'data':
+THÔNG TIN BẢNG 'data':
 {schema_str}
 
-CÂU HỎI: {question}
+CÂU HỎI: "{question}"
 
-Hãy trả về JSON với format:
+YÊU CẦU:
+1. SQL chạy được trên DuckDB.
+2. Tên bảng là 'data'.
+3. Trả về JSON thuần túy (không markdown).
+
+OUTPUT JSON FORMAT:
 {{
-    "sql": "SELECT ... FROM data WHERE ...",
-    "explanation": "Giải thích câu SQL này làm gì",
-    "chart_type": "bar/line/pie/scatter/histogram",
-    "x_column": "tên cột trục X",
-    "y_column": "tên cột trục Y",
+    "sql": "SELECT ... FROM data ...",
+    "explanation": "Giải thích ngắn gọn",
+    "chart_type": "bar" | "line" | "pie" | "scatter",
+    "x_column": "tên_cột_x",
+    "y_column": "tên_cột_y",
     "title": "Tiêu đề biểu đồ"
 }}
-
-LÀM ỚN TRÊN NHẤT LÀ SQL QUERY CHỈ SELECT CÁC CỘT CẦN THIẾT.
-Tên bảng PHẢI là 'data'.
 """
         
         if self.provider == LLMProvider.OPENAI:
             response = self.client.chat.completions.create(
-                model="gpt-4-turbo-preview",
+                model=self.model_name,
                 messages=[
-                    {"role": "system", "content": "You are a SQL expert that generates valid SQL and chart configurations in JSON format."},
+                    {"role": "system", "content": "You are a helpful data assistant. Output valid JSON."},
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.1
             )
-            result = json.loads(response.choices[0].message.content)
+            raw_content = response.choices[0].message.content
         
         elif self.provider == LLMProvider.GEMINI:
             response = self.model.generate_content(prompt)
-            # Parse JSON từ response
-            text = response.text
-            # Tìm JSON trong response
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            result = json.loads(text[start:end])
-        
-        return result
-    
-    def suggest_chart_type(self, data_info: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Gợi ý loại biểu đồ phù hợp dựa trên dữ liệu
-        """
-        prompt = f"""Dựa vào thông tin dữ liệu sau, hãy gợi ý loại biểu đồ phù hợp nhất:
-
-Số dòng: {data_info.get('row_count')}
-Các cột: {data_info.get('columns')}
-Kiểu dữ liệu: {data_info.get('dtypes')}
-
-Trả về JSON:
-{{
-    "chart_type": "bar/line/pie/scatter",
-    "reason": "Lý do chọn loại biểu đồ này",
-    "x_column": "cột nên dùng cho trục X",
-    "y_column": "cột nên dùng cho trục Y"
-}}
-"""
-        
-        if self.provider == LLMProvider.OPENAI:
-            response = self.client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
-            )
-            return json.loads(response.choices[0].message.content)
-        
-        elif self.provider == LLMProvider.GEMINI:
-            response = self.model.generate_content(prompt)
-            text = response.text
-            start = text.find('{')
-            end = text.rfind('}') + 1
-            return json.loads(text[start:end])
+            raw_content = response.text
+            
+        return self._clean_and_parse_json(raw_content)

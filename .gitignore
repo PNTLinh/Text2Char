@@ -1,0 +1,36 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# dotenv
+.env
+
+# DuckDB
+*.db
+*.db.wal
+
+# ChromaDB
+data/vector_db/
+
+# Streamlit
+.streamlit/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Uploads (tạm thời, có thể xóa)
+data/uploads/
